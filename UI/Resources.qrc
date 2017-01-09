@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="CacheSim/Icons">
+    <file>Icons/cache-icon.png</file>
+  </qresource>
+</RCC>
