@@ -29,7 +29,7 @@ To build CacheSim:
 2. CD into the CacheSim directory
 3. Create a `build` directory: `mkdir build`
 4. Change into this build directory: `cd build`
-5. Run `cmake -G "Visual Studio 14 2015 Win64 .."`
+5. Run `cmake -G "Visual Studio 14 2015 Win64" ..`
 6. `start CacheSim.sln` to open the solution and build in Visual Studio
 
 Note that the only supported build configuration is 64-bit (x64). Bug reports about
