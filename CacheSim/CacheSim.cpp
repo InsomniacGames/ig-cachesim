@@ -46,17 +46,17 @@ extern "C"
 
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof(a[0]))
 
-// By default we stomp ntdll!RtlpCallVectoredHandlers with a jump to our handler.
-//
-// This is dirty, so at your option you can also attempt to use a regular vectored exception handler.
-// The problem with this is that there is a SRW lock internally in ntdll that protects the VEH list. 
-// When taking an exception for *every instruction* on *every thread* that lock is extremely contended.
-// This results in deadlocks on certain combinations of sleeps and syscalls, and only on some versions
-// of Windows. We haven't exactly figured that part out, so we developed this ugliness instead.
-//
-// With USE_VEH_TRAMPOLINE enabled, the vectored exception handling code simply calls our routine directly
-// and doesn't bother with any locking or list walking. This can break things in theory, but seems OK
-// for us in practice because nothing else uses vectored exception handling. But YMMV.
+/// By default we stomp ntdll!RtlpCallVectoredHandlers with a jump to our handler.
+///
+/// This is dirty, so at your option you can also attempt to use a regular vectored exception handler.
+/// The problem with this is that there is a SRW lock internally in ntdll that protects the VEH list. 
+/// When taking an exception for *every instruction* on *every thread* that lock is extremely contended.
+/// This results in deadlocks on certain combinations of sleeps and syscalls, and only on some versions
+/// of Windows. We haven't exactly figured that part out, so we developed this ugliness instead.
+///
+/// With USE_VEH_TRAMPOLINE enabled, the vectored exception handling code simply calls our routine directly
+/// and doesn't bother with any locking or list walking. This can break things in theory, but seems OK
+/// for us in practice because nothing else uses vectored exception handling. But YMMV.
 #define USE_VEH_TRAMPOLINE 1
 
 namespace CacheSim
@@ -101,8 +101,8 @@ namespace CacheSim
   {
     LONG        m_Generation;
     ud_t        m_Disassembler;
-    uint32_t    m_StackIndex;                 // Index of current stack in callstack data. Recomputed whenever the call stack contents changes.
-    int         m_LogicalCoreIndex;           // Index of logical core, -1
+    uint32_t    m_StackIndex;                 ///< Index of current stack in callstack data. Recomputed whenever the call stack contents changes.
+    int         m_LogicalCoreIndex;           ///< Index of logical core, -1
   };
 
   static thread_local ThreadState s_ThreadState;
@@ -178,11 +178,11 @@ namespace CacheSim
     return 0 == memcmp(l.m_Hash, r.m_Hash, sizeof l.m_Hash);
   }
 
-  // Maps 128-bit hash digests to call stacks.
+  /// Maps 128-bit hash digests to call stacks.
   static GenericHashTable<StackKey, StackValue> g_Stacks;
-  // Maps RIP+Stack before that to stats
+  /// Maps RIP+Stack before that to stats
   static GenericHashTable<RipKey, RipStats> g_Stats;
-  // Raw storage array for stack trace values
+  /// Raw storage array for stack trace values
   static struct
   {
     uintptr_t*  m_Frames;
@@ -737,6 +737,13 @@ void CacheSimInit()
 }
 
 __declspec(dllexport)
+/*!
+\remarks
+This function contains a table describing the offset inside the ntdll module where we can find the start of the symbol
+RtlpCallVectoredHandlers. This symbol is not exported, so it's not possible to get its location
+with a call to GetProcAddress(). If you have a version of NTDLL not in this list and need to
+use CacheSim, update the table in this function per the comment below.
+*/
 bool CacheSimStartCapture()
 {
   using namespace CacheSim;

@@ -28,17 +28,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "CacheSim.h"
 
-#include <utility> // std::swap
+#include <utility> // for std::swap
 
 namespace CacheSim
 {
   enum AccessResult
   {
-    kD1Hit    = 0,              // Access hit the D1
-    kI1Hit,                     // Access hit the I1
-    kL2Hit,                     // Access hit the L2
-    kL2IMiss,                   // Access missed the L2 due to an instruction fetch
-    kL2DMiss,                   // Access missed the L2 due to a data access
+    kD1Hit    = 0,              ///< Access hit the D1
+    kI1Hit,                     ///< Access hit the I1
+    kL2Hit,                     ///< Access hit the L2
+    kL2IMiss,                   ///< Access missed the L2 due to an instruction fetch
+    kL2DMiss,                   ///< Access missed the L2 due to a data access
     kPrefetchHitD1,
     kPrefetchHitL2,
     kInstructionsExecuted,
@@ -55,7 +55,7 @@ namespace CacheSim
   template <size_t kWays>
   struct SetData
   {
-    uint64_t  m_Addr[kWays];    // Virtual address cached, or zero (invalid).
+    uint64_t  m_Addr[kWays];    ///< Virtual address cached, or zero (invalid).
   };
 
   template <size_t kCacheSizeBytes, size_t kWays>
@@ -64,8 +64,8 @@ namespace CacheSim
   public:
     enum
     {
-      kLineSize     = 64,   // We're on x86.
-      kSetSizeShift = 6,    // Log2(kLineSize)
+      kLineSize     = 64,   ///< We're on x86.
+      kSetSizeShift = 6,    ///< Log2(kLineSize)
       kSetCount     = kCacheSizeBytes / kLineSize / kWays,
       kSetMask      = kSetCount - 1,
     };
@@ -141,12 +141,12 @@ namespace CacheSim
     }
   };
 
-  // Simulate the Jaguar 32 KB L1 cache
-  // 512 lines or 64 bytes each, 8 ways per line
+  /// Simulate the Jaguar 32 KB L1 cache
+  /// 512 lines or 64 bytes each, 8 ways per line
   using JaguarD1 = Cache<32 * 1024, 8>;
-  // I1 is 2-way set assoc, 32 KB
+  /// I1 is 2-way set assoc, 32 KB
   using JaguarI1 = Cache<32 * 1024, 2>;
-  // Jaguar L2 is 2 MB, 16 way set assoc.
+  /// Jaguar L2 is 2 MB, 16 way set assoc.
   using JaguarL2 = Cache<2 * 1024 * 1024, 16>;
 
   class JaguarModule

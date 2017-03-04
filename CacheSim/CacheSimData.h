@@ -29,8 +29,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "CacheSimInternals.h"
 #include <algorithm>
 
-// Describes structures that go in the output standard DataFileWriter-based files
-// after a cache simulation has been run.
+/// Describes structures that go in the output standard DataFileWriter-based files
+/// after a cache simulation has been run.
 namespace CacheSim
 {
 
