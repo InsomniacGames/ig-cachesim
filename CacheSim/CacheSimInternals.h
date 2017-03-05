@@ -62,13 +62,12 @@ namespace CacheSim
   class Cache
   {
   public:
-    enum
-    {
-      kLineSize     = 64,   ///< We're on x86.
-      kSetSizeShift = 6,    ///< Log2(kLineSize)
-      kSetCount     = kCacheSizeBytes / kLineSize / kWays,
-      kSetMask      = kSetCount - 1,
-    };
+
+    static constexpr size_t  kLineSize     = 64;   ///< We're on x86.
+    static constexpr size_t  kSetSizeShift = 6;    ///< Log2(kLineSize)
+    static constexpr size_t  kSetCount     = kCacheSizeBytes / kLineSize / kWays;
+    static constexpr size_t  kSetMask      = kSetCount - 1;
+
     static_assert((kWays & (kWays - 1)) == 0,                         "Way count must be power of 2");
     static_assert((kSetCount & (~size_t(kSetMask))) == kSetCount,     "Set count must be power of 2");
     static_assert(kSetCount * kLineSize * kWays == kCacheSizeBytes,   "Size must divide perfectly");
