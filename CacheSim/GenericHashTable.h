@@ -26,21 +26,21 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-// This generic hash table is mostly useful for cases where its hard to derive
-// a unique 32 or 64-bit key for entries. It is much slower than HashTable and
-// HashTable64, but offers support for retaining arbitrary data in the keys as
-// well as stable value pointers which can be a great help in tools such as
-// builders.
-//
-// Generic hash tables are always backed by a heap. This is usually OK because
-// they're best suited to tools and not the game runtime.
-//
-// The following restrictions apply:
-// - The key type must be POD
-// - The key type must be comparable with operator==
-// - The key type must be hashable by calling HashFunctions::Hash(KeyType kt)
-//   - Re-open the namespace and override as needed for your own struct-based key types.
-// - Constructors or destructors are called for value types.
+/// This generic hash table is mostly useful for cases where its hard to derive
+/// a unique 32 or 64-bit key for entries. It is much slower than HashTable and
+/// HashTable64, but offers support for retaining arbitrary data in the keys as
+/// well as stable value pointers which can be a great help in tools such as
+/// builders.
+///
+/// Generic hash tables are always backed by a heap. This is usually OK because
+/// they're best suited to tools and not the game runtime.
+///
+/// The following restrictions apply:
+/// - The key type must be POD
+/// - The key type must be comparable with operator==
+/// - The key type must be hashable by calling HashFunctions::Hash(KeyType kt)
+///   - Re-open the namespace and override as needed for your own struct-based key types.
+/// - Constructors or destructors are called for value types.
 
 namespace HashFunctions
 {
@@ -107,17 +107,17 @@ public:
 
   size_t GetCapacity() const { return m_Capacity; }
 
-  // Locate an existing value associated with a key, and return a pointer to it.
-  // The pointer is guaranteed to stay valid as long as the hash table is, or until the key is removed.
+  /// Locate an existing value associated with a key, and return a pointer to it.
+  /// The pointer is guaranteed to stay valid as long as the hash table is, or until the key is removed.
   ValueType* Find(const KeyType& key)
   {
     const uint32_t hash = HashFunctions::Hash(key);
     return FindInternal(hash, key);
   }
 
-  // Insert a new element into the table.
-  // If an existing element with the same key exists, a pointer to it is returned.
-  // The pointer is guaranteed to stay valid as long as the hash table is, or until the key is removed.
+  /// Insert a new element into the table.
+  /// If an existing element with the same key exists, a pointer to it is returned.
+  /// The pointer is guaranteed to stay valid as long as the hash table is, or until the key is removed.
   ValueType* Insert(const KeyType& key)
   {
     const uint32_t hash = HashFunctions::Hash(key);
@@ -146,8 +146,8 @@ public:
     return new (&elem->m_Value) ValueType;
   }
 
-  // Remove the specified key, and free its value.
-  // Returns true if the key was found.
+  /// Remove the specified key, and free its value.
+  /// Returns true if the key was found.
   bool Remove(const KeyType& key)
   {
     const uint32_t hash = HashFunctions::Hash(key);

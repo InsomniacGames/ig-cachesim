@@ -30,8 +30,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <Windows.h>
 
-// This DLL is loaded at runtime by the engine to perform cache simulation.
-// As such there's no static binding to these functions, they're looked up with GetProcAddress().
+/*! \file
+This DLL is loaded at runtime by the engine to perform cache simulation.
+As such there's no static binding to these functions, they're looked up with GetProcAddress().
+*/.
 
 #ifndef IG_CACHESIM_API
 #define IG_CACHESIM_API __declspec(dllimport)
@@ -39,25 +41,25 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 extern "C"
 {
-  // Initializes the API. Only call once.
+  /// Initializes the API. Only call once.
   IG_CACHESIM_API void CacheSimInit();
 
-  // Set what Jaguar core (0-7) this Win32 thread ID will map to.
-  // Threads without a jaguar core id will not be recorded, so you'll need to set up atleast one.
+  /// Set what Jaguar core (0-7) this Win32 thread ID will map to.
+  /// Threads without a jaguar core id will not be recorded, so you'll need to set up atleast one.
   IG_CACHESIM_API void CacheSimSetThreadCoreMapping(uint32_t thread_id, int logical_core_id);
 
-  // Start recording a capture, buffering it to memory.
+  /// Start recording a capture, buffering it to memory.
   IG_CACHESIM_API bool CacheSimStartCapture();
 
-  // Stop recording and optionally save the capture to disk.
+  /// Stop recording and optionally save the capture to disk.
   IG_CACHESIM_API void CacheSimEndCapture(bool save);
 
-  // Remove the exception handler machinery.
+  /// Remove the exception handler machinery.
   IG_CACHESIM_API void CacheSimRemoveHandler(void);
 }
 
 //--------------------------------------------------------------------------------------------------
-// Shim helper to load the cache simulator dynamically.
+/// Shim helper to load the cache simulator dynamically.
 
 namespace CacheSim
 {
