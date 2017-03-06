@@ -33,7 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /*! \file
 This DLL is loaded at runtime by the engine to perform cache simulation.
 As such there's no static binding to these functions, they're looked up with GetProcAddress().
-*/.
+*/
 
 #ifndef IG_CACHESIM_API
 #define IG_CACHESIM_API __declspec(dllimport)
