@@ -827,6 +827,7 @@ bool CacheSimStartCapture()
     {
       { 0x1a9000, 0x1a875f, 101552 },   // Win 7 SP1 v6.1 build 7601
       { 0x1ac000, 0x1a7d5d, 351820 },   // Win 8.1 RTM
+      { 0x1ad000, 0x1aa28f, 351756 },   // Win 8.1 Pro build 9600
       { 0x1be000, 0x1cc294,  94928 },   // Win 8.0 RTM
       { 0x1d1000, 0x1d204f, 436668 },   // Win 10 1607 build 14393.222
       { 0x1d1000, 0x1dc01c, 441340 },   // Win 10 1607 build 14393.693
