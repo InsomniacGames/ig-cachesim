@@ -63,7 +63,9 @@ namespace CacheSim
 {
   enum
   {
-    kMaxCalls = 128
+    kMaxCalls = 128,
+    kExceptionCodeFindHandlers = 0x10001,
+    kExceptionCodeFindHandlersContext = 0x10002
   };
 
   struct StackKey
@@ -736,6 +738,40 @@ void CacheSimInit()
   g_RaiseExceptionAddress = (uintptr_t) GetProcAddress(h, "RaiseException");
 }
 
+#if USE_VEH_TRAMPOLINE
+static LONG WINAPI FindCallHandlers(struct _EXCEPTION_POINTERS* ExcInfo)
+{
+  using namespace CacheSim;
+  if (ExcInfo->ExceptionRecord->ExceptionCode == kExceptionCodeFindHandlers)
+  {
+    // Raise another exception to get a context record that has RtlpCallVectoredHandlers in the stack:
+    RaiseException(kExceptionCodeFindHandlersContext, 0, 1, ExcInfo->ExceptionRecord->ExceptionInformation);
+    return EXCEPTION_CONTINUE_EXECUTION;
+  }
+  else if (ExcInfo->ExceptionRecord->ExceptionCode == kExceptionCodeFindHandlersContext)
+  {
+    // Grab a backtrace from the exception we raised above:
+    uintptr_t callstack[kMaxCalls];
+    int frame_count = Backtrace2(callstack, ExcInfo->ContextRecord);
+    if (0 == frame_count || kMaxCalls == frame_count)
+      DebugBreak();
+
+    // The third Rip in that backtrace should be after a call to RtlpCallVectoredHandlers,
+    // so resolve the Rip-relative offset in that call instruction:
+    uint8_t* call_rip = (uint8_t*) callstack[3];
+    int32_t ofs;
+    memcpy(&ofs, call_rip - 4, 4);
+
+    // Store the result to the argument we got in ExceptionInformation:
+    uintptr_t* pResult = (uintptr_t*) ExcInfo->ExceptionRecord->ExceptionInformation[0];
+    *pResult = (uintptr_t)(call_rip + ofs);
+    return EXCEPTION_CONTINUE_EXECUTION;
+  }
+  
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
+
 __declspec(dllexport)
 /*!
 \remarks
@@ -759,10 +795,6 @@ bool CacheSimStartCapture()
     return false;
   }
 
-#if USE_VEH_TRAMPOLINE
-  uint8_t* ntdll_base = (uint8_t*) LoadLibraryA("ntdll.dll");
-#endif
-  
   // Reset.
   g_Cache.Init();
 
@@ -809,58 +841,21 @@ bool CacheSimStartCapture()
   }
 #else
   {
-    // This table describe the offset inside the ntdll module where we can find the start of the symbol
-    // RtlpCallVectoredHandlers. This symbol is not exported, so it's not possible to get its location
-    // with a call to GetProcAddress(). If you have a version of NTDLL not in this list and need to
-    // use CacheSim; proceed as follows:
-    // - In the Watch, enter {,,ntdll}RtlpCallVectoredHandlers and note the address
-    // - Go to the Modules debug window and note the base address of NTDLL
-    // - Subtract the base from the above address, and record the resulting number. That will go in the `callveh_offset` field below.
-    // - Get SizeOfImage and Checksum from the opt_header pointer below (or from dumpbin /headers ntdll.dll)
-    // - Enter all three values together in a new `known_ntdlls` entry, with a comment about your version
-    static const struct
+    PVOID find_handler = AddVectoredExceptionHandler(1, FindCallHandlers);
+    if (!find_handler)
     {
-      DWORD size;
-      DWORD checksum;
-      DWORD callveh_offset;
-    } known_ntdlls[] =
-    {
-      { 0x1a9000, 0x1a875f, 101552 },   // Win 7 SP1 v6.1 build 7601
-      { 0x1ac000, 0x1a7d5d, 351820 },   // Win 8.1 RTM
-      { 0x1ad000, 0x1aa28f, 351756 },   // Win 8.1 Pro build 9600
-      { 0x1be000, 0x1cc294,  94928 },   // Win 8.0 RTM
-      { 0x1d1000, 0x1d204f, 436668 },   // Win 10 1607 build 14393.222
-      { 0x1d1000, 0x1dc01c, 441340 },   // Win 10 1607 build 14393.693
-    };
-
-    // This is where the MZ...blah header lives (the DOS header)
-    IMAGE_DOS_HEADER* dos_header = (IMAGE_DOS_HEADER*) ntdll_base;
-
-    // We want the PE header.
-    IMAGE_FILE_HEADER* file_header = (IMAGE_FILE_HEADER*) (ntdll_base + dos_header->e_lfanew + 4);
-
-    // Straight after that is the optional header (which technically is optional, but in practice always there.)
-    IMAGE_OPTIONAL_HEADER* opt_header = (IMAGE_OPTIONAL_HEADER*) (((char*)file_header) + sizeof(IMAGE_FILE_HEADER));
-
-    DWORD our_off = ~0u;
-
-    for (size_t i = 0; i < ARRAY_SIZE(known_ntdlls); ++i)
-    {
-      if (opt_header->CheckSum == known_ntdlls[i].checksum && opt_header->SizeOfImage == known_ntdlls[i].size)
-      {
-        our_off = known_ntdlls[i].callveh_offset;
-        break;
-      }
+      DebugBreak();
     }
-    
-    if (~0u == our_off)
+    uintptr_t callveh_ptr = 0;
+    uintptr_t *exception_args = &callveh_ptr;
+    RaiseException(kExceptionCodeFindHandlers, 0, 1, (ULONG_PTR*) &exception_args);
+    RemoveVectoredExceptionHandler(find_handler);
+    if (callveh_ptr == 0)
     {
-      // We don't know about this version of ntdll.
-      // See the comment above on how to add it, or talk to Andreas.
       DebugBreak();
     }
 
-    uint8_t* addr = ntdll_base + our_off;
+    uint8_t* addr = (uint8_t*) callveh_ptr;
     DWORD old_prot;
     if (!VirtualProtect((uint8_t*) (uintptr_t(addr) & ~4095ull),  8192, PAGE_EXECUTE_READWRITE, &old_prot))
     {
