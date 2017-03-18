@@ -5,6 +5,11 @@ This is CacheSim, a cache simulator developed by Insomniac Games. In its current
 an AMD Jaguar cache configuration. It requires a 64-bit Windows machine to work. It has been tested on
 Windows 8, 8.1 and 10, but may require tweaking to run on your particular version of Windows.
 
+For more information on how CacheSim was developed and how it works internally,
+you can check out [this GDC 2017 slide deck](https://deplinenoise.wordpress.com/2017/03/02/slides-insomniac-games-cachesim/).
+
+The talk is available on the GDC vault with full video as well.
+
 Getting the Source
 ------------------
 
