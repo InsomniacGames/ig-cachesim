@@ -841,53 +841,60 @@ bool CacheSimStartCapture()
   }
 #else
   {
-    PVOID find_handler = AddVectoredExceptionHandler(1, FindCallHandlers);
-    if (!find_handler)
+    static bool trampoline_installed = false;
+
+    if (!trampoline_installed)
     {
-      DebugBreak();
-    }
-    uintptr_t callveh_ptr = 0;
-    uintptr_t *exception_args = &callveh_ptr;
-    RaiseException(kExceptionCodeFindHandlers, 0, 1, (ULONG_PTR*) &exception_args);
-    RemoveVectoredExceptionHandler(find_handler);
-    if (callveh_ptr == 0)
-    {
-      DebugBreak();
-    }
+      PVOID find_handler = AddVectoredExceptionHandler(1, FindCallHandlers);
+      if (!find_handler)
+      {
+        DebugBreak();
+      }
+      uintptr_t callveh_ptr = 0;
+      uintptr_t *exception_args = &callveh_ptr;
+      RaiseException(kExceptionCodeFindHandlers, 0, 1, (ULONG_PTR*)&exception_args);
+      RemoveVectoredExceptionHandler(find_handler);
+      if (callveh_ptr == 0)
+      {
+        DebugBreak();
+      }
 
-    uint8_t* addr = (uint8_t*) callveh_ptr;
-    DWORD old_prot;
-    if (!VirtualProtect((uint8_t*) (uintptr_t(addr) & ~4095ull),  8192, PAGE_EXECUTE_READWRITE, &old_prot))
-    {
-      DebugBreak();
-    }
+      uint8_t* addr = (uint8_t*)callveh_ptr;
+      DWORD old_prot;
+      if (!VirtualProtect((uint8_t*)(uintptr_t(addr) & ~4095ull), 8192, PAGE_EXECUTE_READWRITE, &old_prot))
+      {
+        DebugBreak();
+      }
 
-    uintptr_t target = (uintptr_t) &StepFilter;
-    const uint8_t a0 = uint8_t(target >> 56);
-    const uint8_t a1 = uint8_t(target >> 48);
-    const uint8_t a2 = uint8_t(target >> 40);
-    const uint8_t a3 = uint8_t(target >> 32);
-    const uint8_t a4 = uint8_t(target >> 24);
-    const uint8_t a5 = uint8_t(target >> 16);
-    const uint8_t a6 = uint8_t(target >>  8);
-    const uint8_t a7 = uint8_t(target >>  0);
+      uintptr_t target = (uintptr_t)&StepFilter;
+      const uint8_t a0 = uint8_t(target >> 56);
+      const uint8_t a1 = uint8_t(target >> 48);
+      const uint8_t a2 = uint8_t(target >> 40);
+      const uint8_t a3 = uint8_t(target >> 32);
+      const uint8_t a4 = uint8_t(target >> 24);
+      const uint8_t a5 = uint8_t(target >> 16);
+      const uint8_t a6 = uint8_t(target >> 8);
+      const uint8_t a7 = uint8_t(target >> 0);
 
-    uint8_t replacement[] =
-    {
-      0x48, 0xb8, a7, a6, a5, a4, a3, a2, a1, a0,   // mov rax, addr (64-bit abs)
-      0xff, 0xe0                                    // jmp rax
-    };
+      uint8_t replacement[] =
+      {
+        0x48, 0xb8, a7, a6, a5, a4, a3, a2, a1, a0,   // mov rax, addr (64-bit abs)
+        0xff, 0xe0                                    // jmp rax
+      };
 
-    static_assert(sizeof replacement == sizeof veh_stash, "This needs to match in size");
+      static_assert(sizeof replacement == sizeof veh_stash, "This needs to match in size");
 
-    memcpy(veh_stash, addr, sizeof veh_stash);
-    memcpy(addr, replacement, sizeof replacement);
+      memcpy(veh_stash, addr, sizeof veh_stash);
+      memcpy(addr, replacement, sizeof replacement);
 
-    FlushInstructionCache(GetCurrentProcess(), addr, sizeof replacement);
-    
-    if (!VirtualProtect((uint8_t*) (uintptr_t(addr) & ~4095ull),  8192, old_prot, &old_prot))
-    {
-      DebugBreak();
+      FlushInstructionCache(GetCurrentProcess(), addr, sizeof replacement);
+
+      if (!VirtualProtect((uint8_t*)(uintptr_t(addr) & ~4095ull), 8192, old_prot, &old_prot))
+      {
+        DebugBreak();
+      }
+
+      trampoline_installed = true;
     }
   }
 
