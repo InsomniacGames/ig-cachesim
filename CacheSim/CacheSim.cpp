@@ -340,9 +340,36 @@ static intptr_t ReadReg(ud_type_t reg, const CONTEXT* ctx)
   return 0;
 }
 
-static uintptr_t ComputeEa(const ud_operand_t& op, const CONTEXT* ctx)
+static bool s_HaveFsGsBase = false;
+
+static uintptr_t AdjustFsSegment(uintptr_t address)
+{
+  if (s_HaveFsGsBase)
+  {
+    return _readfsbase_u64() + address;
+  }
+  else
+  {
+    return 0;
+  }
+}
+
+static uintptr_t AdjustGsSegment(uintptr_t address)
+{
+  if (s_HaveFsGsBase)
+  {
+    return _readgsbase_u64() + address;
+  }
+  else
+  {
+    return 0;
+  }
+}
+
+static uintptr_t ComputeEa(const ud_t* ud, int operand_index, const CONTEXT* ctx)
 {
   uintptr_t addr = 0;
+  const ud_operand_t& op = ud->operand[operand_index];
 
   switch (op.offset)
   {
@@ -364,6 +391,16 @@ static uintptr_t ComputeEa(const ud_operand_t& op, const CONTEXT* ctx)
       addr += regval * op.scale;
     else
       addr += regval;
+  }
+
+  switch (ud->pfx_seg)
+  {
+  case UD_R_FS:
+    addr = AdjustFsSegment(addr);
+    break;
+  case UD_R_GS:
+    addr = AdjustGsSegment(addr);
+    break;
   }
 
   return addr;
@@ -392,9 +429,12 @@ static void GenerateMemoryAccesses(int core_index, const ud_t* ud, DWORD64 rip, 
       DebugBreak();
     if (intptr_t(addr) < 0)
       DebugBreak();
-    reads[read_count].ea = addr;
-    reads[read_count].sz = sz;
-    ++read_count;
+    if (addr)
+    {
+      reads[read_count].ea = addr;
+      reads[read_count].sz = sz;
+      ++read_count;
+    }
   };
 
   auto data_w = [&](uintptr_t addr, size_t sz) -> void
@@ -403,9 +443,12 @@ static void GenerateMemoryAccesses(int core_index, const ud_t* ud, DWORD64 rip, 
       DebugBreak();
     if (intptr_t(addr) < 0)
       DebugBreak();
-    writes[write_count].ea = addr;
-    writes[write_count].sz = sz;
-    ++write_count;
+    if (addr)
+    {
+      writes[write_count].ea = addr;
+      writes[write_count].sz = sz;
+      ++write_count;
+    }
   };
 
   //const int dir = ctx->EFlags & (1 << 10) ? -1 : 1;
@@ -489,27 +532,27 @@ static void GenerateMemoryAccesses(int core_index, const ud_t* ud, DWORD64 rip, 
   case UD_Iprefetcht0:
   case UD_Iprefetcht1:
   case UD_Iprefetcht2:
-    prefetch_op.ea = ComputeEa(ud->operand[0], ctx);
+    prefetch_op.ea = ComputeEa(ud, 0, ctx);
     prefetch_op.sz = 64;
     break;
 
   case UD_Imovntq:
     // TODO: Handle this specially?
-    data_w(ComputeEa(ud->operand[0], ctx), 8);
+    data_w(ComputeEa(ud, 0, ctx), 8);
     break;
 
   case UD_Imovntdq:
   case UD_Imovntdqa:
     // TODO: Handle this specially?
-    data_w(ComputeEa(ud->operand[0], ctx), 16);
+    data_w(ComputeEa(ud, 0, ctx), 16);
     break;
 
   case UD_Ifxsave:
-    data_w(ComputeEa(ud->operand[0], ctx), 512);
+    data_w(ComputeEa(ud, 0, ctx), 512);
     break;
 
   case UD_Ifxrstor:
-    data_r(ComputeEa(ud->operand[0], ctx), 512);
+    data_r(ComputeEa(ud, 0, ctx), 512);
     break;
 
   default:
@@ -521,10 +564,10 @@ static void GenerateMemoryAccesses(int core_index, const ud_t* ud, DWORD64 rip, 
       switch (ud->operand[op].access)
       {
       case UD_OP_ACCESS_READ:
-        data_r(ComputeEa(ud->operand[op], ctx), ud->operand[op].size / 8);
+        data_r(ComputeEa(ud, op, ctx), ud->operand[op].size / 8);
         break;
       case UD_OP_ACCESS_WRITE:
-        data_w(ComputeEa(ud->operand[op], ctx), ud->operand[op].size / 8);
+        data_w(ComputeEa(ud, op, ctx), ud->operand[op].size / 8);
         break;
       }
     }
@@ -736,6 +779,19 @@ void CacheSimInit()
 
   HMODULE h = LoadLibraryA("kernelbase.dll");
   g_RaiseExceptionAddress = (uintptr_t) GetProcAddress(h, "RaiseException");
+
+  // Check the CPU features to see if we can read the FS/GS segment bases from userland. (Ivy bridge and later.)
+  int result[4] = { 0, 0, 0, 0 };
+  __cpuid(result, 0);
+  if (/* EAX: */ result[0] >= 7)
+  {
+    __cpuidex(result, 7, 0);
+
+    if (/* EBX: */ result[1] & 1)
+    {
+      s_HaveFsGsBase = true;
+    }
+  }
 }
 
 #if USE_VEH_TRAMPOLINE
