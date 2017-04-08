@@ -1137,6 +1137,7 @@ void CacheSimSetThreadCoreMapping(uint32_t thread_id, int logical_core_id)
     if (s_CoreMappings[i].m_ThreadId == thread_id)
     {
       s_CoreMappings[i].m_LogicalCore = logical_core_id;
+      return;
     }
   }
 
@@ -1147,7 +1148,7 @@ void CacheSimSetThreadCoreMapping(uint32_t thread_id, int logical_core_id)
   }
 
   s_CoreMappings[count].m_ThreadId = thread_id;
-  s_CoreMappings[logical_core_id].m_LogicalCore = logical_core_id;
+  s_CoreMappings[count].m_LogicalCore = logical_core_id;
 
   ++s_CoreMappingCount;
 }
