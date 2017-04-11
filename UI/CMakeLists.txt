@@ -58,6 +58,12 @@ endforeach()
 
 set(CMAKE_AUTORCC TRUE)
 
+if (WIN32)
+  set(PLATFORM_SRC_FILES TraceDataWindows.cpp)
+else (WIN32)
+ set(PLATFORM_SRC_FILES TraceDataLinux.cpp)
+endif (WIN32)
+
 add_executable(CacheSimUI WIN32
   AnnotationView.cpp  AnnotationView.h
   BaseProfileView.cpp BaseProfileView.h
@@ -72,6 +78,7 @@ add_executable(CacheSimUI WIN32
   TraceTab.cpp TraceTab.h
   TreeModel.cpp TreeModel.h
   TreeProfileView.cpp TreeProfileView.h
+  ${PLATFORM_SRC_FILES}
 
   Resources.qrc
 
@@ -79,16 +86,24 @@ add_executable(CacheSimUI WIN32
   ${uic_output}
 )
 
-target_compile_definitions(CacheSimUI
-  PRIVATE "IG_CACHESIM_API=__declspec(dllimport)" "NOMINMAX" "WIN32_LEAN_AND_MEAN")
+if (WIN32)
+  target_compile_definitions(CacheSimUI
+    PRIVATE "IG_CACHESIM_API=__declspec(dllimport)" "NOMINMAX" "WIN32_LEAN_AND_MEAN")
+
+  target_compile_options(CacheSimUI
+    PRIVATE "/W4" "/wd4127" "/wd4458" "/wd4200" "/wd4718")
+
+  target_link_libraries(CacheSimUI
+    PRIVATE Qt5::Widgets "dbghelp")
+else (WIN32)
+  target_link_libraries(CacheSimUI
+    PRIVATE Qt5::Widgets)
+  target_compile_options(CacheSimUI
+    PRIVATE -g)
+endif (WIN32)
 
 target_include_directories(CacheSimUI
   PRIVATE "${CMAKE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}")
 
-target_link_libraries(CacheSimUI
-  PRIVATE Qt5::Widgets "dbghelp")
-
-target_compile_options(CacheSimUI
-  PRIVATE "/W4" "/wd4127" "/wd4458" "/wd4200" "/wd4718")
 
 set_target_properties(CacheSimUI PROPERTIES FOLDER "UI")

@@ -28,25 +28,63 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdint.h>
 #include <stdio.h>
+#if defined(_MSC_VER)
 #include <Windows.h>
+#ifndef IG_CACHESIM_API
+#define IG_CACHESIM_API __declspec(dllimport)
+#endif
+#else
+#include <dlfcn.h>
+#include <unistd.h>
+#define IG_CACHESIM_API
+#endif
+
+
+#if defined(_MSC_VER)
+#define CACHE_SIM_LIB_NAME "CacheSim.dll"
+#define IG_LoadLib(NAME) LoadLibraryA(NAME)
+#define IG_UnloadLib(HANDLE) FreeLibrary(HANDLE)
+#define IG_GetFuncAddress(HANDLE, NAME) GetProcAddress(HANDLE, NAME)
+#define IG_ThreadYield() Sleep(0)
+namespace CacheSim
+{
+  inline int32_t AtomicCompareExchange(volatile int32_t* addr, int32_t new_val, int32_t old_val) { return _InterlockedCompareExchange((volatile LONG*)addr, new_val, old_val); }
+  inline int32_t AtomicIncrement(volatile int32_t* addr) { return _InterlockedIncrement((volatile LONG*)addr); }
+  inline void PrintError(const char* error) { MessageBoxA(NULL, error, "Error", MB_OK | MB_ICONERROR); }
+  inline void SleepMilliseconds(int ms) { Sleep(ms); }
+}
+#else
+#define CACHE_SIM_LIB_NAME "libCacheSim.so"
+#define IG_LoadLib(NAME) dlopen(NAME, RTLD_NOW)
+#define IG_UnloadLib(HANDLE) dlclose(HANDLE)
+#define IG_GetFuncAddress(HANDLE, NAME) dlsym(HANDLE, NAME)
+#define IG_ThreadYield() sched_yield()
+namespace CacheSim
+{
+  inline int32_t AtomicCompareExchange(volatile int32_t* addr, int32_t new_val, int32_t old_val) { return __sync_val_compare_and_swap(addr, old_val, new_val); }
+  inline int32_t AtomicIncrement(volatile int32_t* addr) { return __sync_fetch_and_add(addr, 1); }
+  inline void SleepMilliseconds(int ms) { usleep(ms * 1000); }
+  inline void PrintError(const char* error) { fprintf(stderr, "%s\n", error); }
+}
+#endif
 
 /*! \file
 This DLL is loaded at runtime by the engine to perform cache simulation.
 As such there's no static binding to these functions, they're looked up with GetProcAddress().
 */
 
-#ifndef IG_CACHESIM_API
-#define IG_CACHESIM_API __declspec(dllimport)
-#endif
-
 extern "C"
 {
   /// Initializes the API. Only call once.
   IG_CACHESIM_API void CacheSimInit();
 
+  /// Returns a thread ID suitable for use with CachesimSetThreadCoreMapping
+  IG_CACHESIM_API uint64_t CacheSimGetCurrentThreadId();
+
   /// Set what Jaguar core (0-7) this Win32 thread ID will map to.
   /// Threads without a jaguar core id will not be recorded, so you'll need to set up atleast one.
-  IG_CACHESIM_API void CacheSimSetThreadCoreMapping(uint32_t thread_id, int logical_core_id);
+  /// A core id of -1 will disable recording the thread (e.g., upon thread completion)
+  IG_CACHESIM_API void CacheSimSetThreadCoreMapping(uint64_t thread_id, int logical_core_id);
 
   /// Start recording a capture, buffering it to memory.
   IG_CACHESIM_API bool CacheSimStartCapture();
@@ -66,41 +104,51 @@ namespace CacheSim
   class DynamicLoader
   {
   private:
+#if defined(_MSC_VER)
     HMODULE m_Module = nullptr;
+#else
+    void* m_Module = nullptr;
+#endif
     decltype(&CacheSimInit) m_InitFn = nullptr;
     decltype(&CacheSimStartCapture) m_StartCaptureFn = nullptr;
     decltype(&CacheSimEndCapture) m_EndCaptureFn = nullptr;
     decltype(&CacheSimRemoveHandler) m_RemoveHandlerFn = nullptr;
     decltype(&CacheSimSetThreadCoreMapping) m_SetThreadCoreMapping = nullptr;
+    decltype(&CacheSimGetCurrentThreadId) m_GetCurrentThreadId = nullptr;
 
   public:
     DynamicLoader()
     {}
 
   public:
-    inline bool Init()
+    bool Init()
     {
       if (!m_Module)
       {
-        m_Module = LoadLibraryA("CacheSim.dll");
+        m_Module = IG_LoadLib(CACHE_SIM_LIB_NAME);
         if (!m_Module)
         {
           char msg[512];
+#if defined(_MSC_VER)
           _snprintf_s(msg, sizeof msg, "Failed to load CacheSim.dll - Win32 error: %u\n", GetLastError());
-          MessageBoxA(NULL, msg, "Error", MB_OK|MB_ICONERROR);
+#else
+          snprintf(msg, sizeof msg, "Failed to load libCacheSim.so - Linux error: %s\n", dlerror());
+#endif
+          PrintError(msg);
           return false;
         }
 
-        m_InitFn                = (decltype(&CacheSimInit))                 GetProcAddress(m_Module, "CacheSimInit");
-        m_StartCaptureFn        = (decltype(&CacheSimStartCapture))         GetProcAddress(m_Module, "CacheSimStartCapture");
-        m_EndCaptureFn          = (decltype(&CacheSimEndCapture))           GetProcAddress(m_Module, "CacheSimEndCapture");
-        m_RemoveHandlerFn       = (decltype(&CacheSimRemoveHandler))        GetProcAddress(m_Module, "CacheSimRemoveHandler");
-        m_SetThreadCoreMapping  = (decltype(&CacheSimSetThreadCoreMapping)) GetProcAddress(m_Module, "CacheSimSetThreadCoreMapping");
+        m_InitFn =                (decltype(&CacheSimInit))                 IG_GetFuncAddress(m_Module, "CacheSimInit");
+        m_StartCaptureFn =        (decltype(&CacheSimStartCapture))         IG_GetFuncAddress(m_Module, "CacheSimStartCapture");
+        m_EndCaptureFn =          (decltype(&CacheSimEndCapture))           IG_GetFuncAddress(m_Module, "CacheSimEndCapture");
+        m_RemoveHandlerFn =       (decltype(&CacheSimRemoveHandler))        IG_GetFuncAddress(m_Module, "CacheSimRemoveHandler");
+        m_SetThreadCoreMapping =  (decltype(&CacheSimSetThreadCoreMapping)) IG_GetFuncAddress(m_Module, "CacheSimSetThreadCoreMapping");
+        m_GetCurrentThreadId =    (decltype(&CacheSimGetCurrentThreadId))   IG_GetFuncAddress(m_Module, "CacheSimGetCurrentThreadId");
 
-        if (!(m_InitFn && m_StartCaptureFn && m_EndCaptureFn && m_RemoveHandlerFn && m_SetThreadCoreMapping))
+        if (!(m_InitFn && m_StartCaptureFn && m_EndCaptureFn && m_RemoveHandlerFn && m_SetThreadCoreMapping && m_GetCurrentThreadId))
         {
-          MessageBoxA(NULL, "CacheSim API mismatch", "Error", MB_OK|MB_ICONERROR);
-          FreeLibrary(m_Module);
+          PrintError("CacheSim API mismatch");
+          IG_UnloadLib(m_Module);
           m_Module = nullptr;
           return false;
         }
@@ -110,6 +158,7 @@ namespace CacheSim
 
       return true;
     }
+
 
     inline bool Start()
     {
@@ -131,9 +180,14 @@ namespace CacheSim
       m_RemoveHandlerFn();
     }
 
-    inline void SetThreadCoreMapping(uint32_t thread_id, int logical_core)
+    inline void SetThreadCoreMapping(uint64_t thread_id, int logical_core)
     {
       m_SetThreadCoreMapping(thread_id, logical_core);
+    }
+
+    inline uint64_t GetCurrentThreadId()
+    {
+      return m_GetCurrentThreadId();
     }
   };
 }
