@@ -27,6 +27,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // HelloWorld.cpp - the simplest possible demo example of CacheSim
 
 #include "CacheSim/CacheSim.h"
+#include <stdio.h>
 
 int main(int argc, char* argv[])
 {
@@ -37,7 +38,7 @@ int main(int argc, char* argv[])
 
   // This needs to happen to map win32 thread ids to physical cores for cache simulation.
   // If a thread is not mapped, it will not be simulated.
-  cachesim.SetThreadCoreMapping(GetCurrentThreadId(), 0);
+  cachesim.SetThreadCoreMapping(cachesim.GetCurrentThreadId(), 0);
 
   cachesim.Start();
 

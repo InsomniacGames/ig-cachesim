@@ -26,7 +26,6 @@
 add_executable(CacheSimUnitTest
   TestCacheSim.cpp)
 
-target_link_libraries(CacheSimUnitTest CacheSim udis86)
 
 target_include_directories(CacheSimUnitTest
   PRIVATE 
@@ -34,5 +33,13 @@ target_include_directories(CacheSimUnitTest
     "${CMAKE_SOURCE_DIR}/googletest/googletest/src"
     "${CMAKE_SOURCE_DIR}/googletest/googletest/include"
     "${CMAKE_SOURCE_DIR}")
+
+if (UNIX)
+  target_compile_options(CacheSimUnitTest PRIVATE "-std=c++11" -g -pthread)
+  target_link_libraries(CacheSimUnitTest LINK_PRIVATE CacheSim udis86)
+else (UNIX)
+  target_link_libraries(CacheSimUnitTest CacheSim udis86)
+endif (UNIX)
+
 
 set_target_properties(CacheSimUnitTest PROPERTIES FOLDER "Unit Tests")

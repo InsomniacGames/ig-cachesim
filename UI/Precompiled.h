@@ -26,7 +26,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
+#if defined(_MSC_VER)
 #include <Windows.h>
+#endif
 
 #include <QtCore/QtCore>
 #include <QtGui/QtGui>
