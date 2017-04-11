@@ -1,5 +1,6 @@
 #include "Precompiled.h"
-#include "MD5.h"
+#include "Md5.h"
+#include <string.h>
 
 //
 // define byte order based on platform

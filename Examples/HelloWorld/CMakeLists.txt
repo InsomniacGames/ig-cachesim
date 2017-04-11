@@ -30,4 +30,10 @@ target_include_directories(HelloWorldExample
   PRIVATE "${CMAKE_SOURCE_DIR}"
 )
 
+if (UNIX)
+  target_compile_options(HelloWorldExample PRIVATE "-std=c++11" -g -pthread)
+  target_link_libraries(HelloWorldExample LINK_PRIVATE dl pthread)
+  set_target_properties(HelloWorldExample PROPERTIES LINK_FLAGS ${LINK_FLAGS} -Wl,--no-as-needed)
+endif (UNIX)
+
 set_target_properties(HelloWorldExample PROPERTIES FOLDER "Examples")

@@ -42,13 +42,80 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ///   - Re-open the namespace and override as needed for your own struct-based key types.
 /// - Constructors or destructors are called for value types.
 
+#include "Platform.h"
+
 namespace HashFunctions
 {
-  uint32_t Hash(uint32_t v) { return v; }
-  uint32_t Hash(int32_t v) { return v; }
-  uint32_t Hash(uint64_t v) { return uint32_t(v) ^ uint32_t(v >> 32); }
-  uint32_t Hash(int64_t v) { return uint32_t(v) ^ uint32_t(uint64_t(v) >> 32); }
+  template<typename T> uint32_t Hash(T v) {return HashTypeOverload(v); }
+  uint32_t HashTypeOverload(uint32_t v) { return v; }
+  uint32_t HashTypeOverload(int32_t v) { return v; }
+  uint32_t HashTypeOverload(uint64_t v) { return uint32_t(v) ^ uint32_t(v >> 32); }
+  uint32_t HashTypeOverload(int64_t v) { return uint32_t(v) ^ uint32_t(uint64_t(v) >> 32); }
 }
+
+constexpr unsigned int BLOCK_SIZE = 4 * 1024;
+
+template<typename ElemType> class HashTableAllocator
+{
+private:
+  union ElemTypeBlock
+  {
+    ElemTypeBlock* m_Next = nullptr;
+    ElemType m_Element;
+  };
+
+public:
+  ElemType* AllocElement()
+  {
+    if (m_FreeList == nullptr)
+    {
+      AllocInternal();
+    }
+
+    ElemTypeBlock* element = m_FreeList;
+    m_FreeList = m_FreeList->m_Next;
+    return &element->m_Element;
+  }
+
+  void FreeElement(ElemType* element)
+  {
+    ElemTypeBlock* elemTypeBlock = (ElemTypeBlock*)element;
+    elemTypeBlock->m_Next = m_FreeList;
+    m_FreeList = elemTypeBlock;
+  }
+
+  ~HashTableAllocator()
+  {
+    while ( m_BlockList )
+    {
+      void* next = *(void**)((uintptr_t)m_BlockList + BLOCK_SIZE - sizeof(void*));
+      VirtualMemoryFree(m_BlockList, BLOCK_SIZE);
+      m_BlockList = next;
+    }
+  }
+
+private: 
+
+  void AllocInternal()
+  {
+    void* block = VirtualMemoryAlloc(BLOCK_SIZE);
+    void** next = (void**)((uintptr_t)block + BLOCK_SIZE - sizeof(void*));
+    
+    *next = m_BlockList;
+    m_BlockList = block;
+
+    ElemTypeBlock* element = (ElemTypeBlock*)block;
+    while ( ((uintptr_t)element + sizeof(ElemTypeBlock)) < (uintptr_t)next )
+    {
+      element->m_Next = m_FreeList;
+      m_FreeList = element;
+      element++;
+    }
+  }
+
+  ElemTypeBlock* m_FreeList = nullptr;
+  void* m_BlockList = nullptr;
+};
 
 template <typename KeyType, typename ValueType>
 class GenericHashTable
@@ -65,20 +132,18 @@ private:
   size_t        m_Capacity;     // Always a power of two
   size_t        m_Count;
   Elem**        m_Table;
-  HANDLE        m_Heap;         // Backing heap
+  HashTableAllocator<Elem> m_Allocator;
 
 public:
   GenericHashTable() { Reset(); }
 
-  void Init(HANDLE heap)
+  void Init()
   {
     Reset();
-    m_Heap = heap;
   }
 
   void FreeAll()
   {
-    Elem** table = m_Table;
     size_t capacity = m_Capacity;
     for (size_t i = 0; i < capacity; ++i)
     {
@@ -87,11 +152,12 @@ public:
       {
         Elem* next = chain->m_Next;
         chain->m_Value.~ValueType();
-        HeapFree(m_Heap, 0, chain);
         chain = next;
       }
     }
-    HeapFree(m_Heap, 0, table);
+    m_Allocator.~HashTableAllocator<Elem>();
+    new(&m_Allocator) HashTableAllocator<Elem>;
+
     m_Count = 0;
     m_Capacity = 0;
     m_Table = nullptr;
@@ -100,7 +166,6 @@ public:
   void Destroy()
   {
     FreeAll();
-    m_Heap = nullptr;
   }
 
   size_t GetCount() const { return m_Count; }
@@ -136,7 +201,7 @@ public:
 
     ++m_Count;
 
-    Elem* elem = (Elem*) HeapAlloc(m_Heap, 0, sizeof *elem);
+    Elem* elem = m_Allocator.AllocElement();
     elem->m_Hash = hash;
     elem->m_Key = key;
     elem->m_Next = m_Table[index];
@@ -162,7 +227,7 @@ public:
       {
         *cloc = e->m_Next;
         e->m_Value.~ValueType();
-        HeapFree(m_Heap, 0, e);
+        m_Allocator.FreeElement(e);
         return true;
       }
       cloc = &e->m_Next;
@@ -305,7 +370,6 @@ private:
     m_Capacity  = 0;
     m_Count     = 0;
     m_Table     = nullptr;
-    m_Heap      = nullptr;
   }
 
   void Grow()
@@ -314,7 +378,7 @@ private:
     const size_t new_capacity = old_capacity ? old_capacity * 2 : 64;
 
     Elem** old_table = m_Table;
-    Elem** new_table = (Elem**) HeapAlloc(m_Heap, 0, sizeof(Elem*) * new_capacity);
+    Elem** new_table = (Elem**) VirtualMemoryAlloc(sizeof(Elem*) * new_capacity);
     memset(new_table, 0, sizeof(Elem*) * new_capacity);
 
     // Rehash
@@ -336,6 +400,6 @@ private:
     m_Capacity  = new_capacity;
     m_Table     = new_table;
 
-    HeapFree(m_Heap, 0, old_table);
+    VirtualMemoryFree(old_table, old_capacity);
   }
 };

@@ -37,10 +37,11 @@ namespace CacheSim
   struct SerializedModuleEntry
   {
     uint64_t    m_ImageBase;
+    uint64_t    m_ImageSegmentOffset; // Linux only
     uint32_t    m_SizeBytes;
     uint32_t    m_StringOffset;
   };
-  static_assert(sizeof(SerializedModuleEntry) == 16, "bump version if you're changing this");
+  static_assert(sizeof(SerializedModuleEntry) == 24, "bump version if you're changing this");
 
   struct SerializedNode
   {
@@ -70,7 +71,7 @@ namespace CacheSim
   };
   static_assert(sizeof(SerializedSymbol) == 32, "bump version if you're changing this");
 
-  static constexpr uint32_t kCurrentVersion = 0x1;
+  static constexpr uint32_t kCurrentVersion = 0x2;
 
   template <typename T>
   const T* serializedOffset(const void* base, uint32_t offset)

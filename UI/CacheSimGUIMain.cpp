@@ -27,18 +27,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "Precompiled.h"
 #include "CacheSimMainWindow.h"
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
+int main(int argc, char** argv)
 {
-  (void) (hInstance, hPrevInstance, lpCmdLine, nShowCmd);
-
+  (void)(argv, argc);
   int qargc = 0;
   QApplication app(qargc, nullptr);
-
-  //QProxyStyle p(QStringLiteral("Fusion"));
-  //app.setStyle(&p);
-
   CacheSim::MainWindow mainWindow;
   mainWindow.setVisible(true);
-
   return app.exec();
 }
