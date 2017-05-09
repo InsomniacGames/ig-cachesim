@@ -42,7 +42,7 @@ void DoSomeWork()
   cachesim.SetThreadCoreMapping(cachesim.GetCurrentThreadId(), 2);
   printf("Thread ID: %jd", (uintmax_t)cachesim.GetCurrentThreadId());
   std::list<uint64_t*> values;
-  for (int i = 0; i < 1000; i++)
+  for (int i = 0; i < 10000; i++)
   {
     values.push_back(new uint64_t(i));
     if ((i % 500) == 0)
