@@ -25,6 +25,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "Precompiled.h"
+#include "SymbolResolver.h"
 #include "TraceData.h"
 #include "CacheSim/CacheSimData.h"
 
@@ -252,23 +253,94 @@ void CacheSim::TraceData::emitLoadFailure(QString errorMessage)
   });
 }
 
-#if 0
-static BOOL CALLBACK DbgHelpCallback(
-  _In_     HANDLE  hProcess,
-  _In_     ULONG   ActionCode,
-  _In_opt_ ULONG64 CallbackData,
-  _In_opt_ ULONG64 UserContext)
+CacheSim::TraceData::ResolveResult CacheSim::TraceData::symbolResolveTask()
 {
-  UNREFERENCED_VARIABLE((hProcess, UserContext));
+  // Pick out input data.
+  const SerializedHeader* hdr = reinterpret_cast<const SerializedHeader*>(m_Data);
 
-  if (CBA_DEBUG_INFO == ActionCode)
+  UnresolvedAddressData unresolvedData;
+  unresolvedData.m_Modules = hdr->GetModules();
+  unresolvedData.m_ModuleCount = hdr->GetModuleCount();
+  unresolvedData.m_Stacks = hdr->GetStacks();
+  unresolvedData.m_StackCount = hdr->GetStackCount();
+  unresolvedData.m_Nodes = hdr->GetStats();
+  unresolvedData.m_NodeCount = hdr->GetStatCount();
+
+  QVector<QString> moduleNames;
+  moduleNames.reserve(unresolvedData.m_ModuleCount);
+
+  for (unsigned int i = 0; i < unresolvedData.m_ModuleCount; i++)
   {
-    printf("dbghelp: %s", (const char*) CallbackData);
+    moduleNames.push_back(hdr->GetModuleName(unresolvedData.m_Modules[i]));
   }
-  
-  return FALSE;
+
+  unresolvedData.m_ModuleNames = moduleNames.begin();
+
+  QVector<ResolvedSymbol> resolvedSymbols;
+  auto progress_callback = [this](int completed, int total)
+  {
+    Q_EMIT symbolResolutionProgressed(completed, total);
+  };
+
+  bool success = ResolveSymbols(unresolvedData, &resolvedSymbols, progress_callback);
+
+  if (success == false)
+  {
+    return ResolveResult();
+  }
+
+  ResolveResult result;
+
+  QVector<QChar>& stringData = result.m_StringData;
+  stringData.push_back(QChar(0));    // Zero offset strings point here.
+
+  QHash<QString, uint32_t> stringLookup;
+
+  auto intern_qstring = [&stringData, &stringLookup](const QString& s) -> uint32_t
+  {
+    auto it = stringLookup.find(s);
+    if (it != stringLookup.end())
+    {
+      return it.value();
+    }
+    uint32_t result = stringData.size();
+    Q_FOREACH(QChar ch, s)
+    {
+      stringData.append(ch);
+    }
+    stringData.append(QChar(0));
+    stringLookup.insert(s, result);
+    return result;
+  };
+
+  auto intern_string = [&](const char* str) -> uint32_t
+  {
+    return intern_qstring(QString::fromUtf8(str));
+  };
+
+  // process to SerializedSymbols
+  result.m_Symbols.reserve(resolvedSymbols.size());
+  for (auto& symbol : resolvedSymbols)
+  {
+    result.m_Symbols.push_back({ symbol.m_Rip });
+    SerializedSymbol& out_sym = result.m_Symbols.last();
+    out_sym.m_SymbolName = intern_qstring(symbol.m_SymbolName);
+    out_sym.m_FileName = intern_qstring(symbol.m_FileName);
+    out_sym.m_LineNumber = symbol.m_LineNumber;
+    out_sym.m_Displacement = symbol.m_Displacement;
+    out_sym.m_ModuleIndex = symbol.m_ModuleIndex;
+  }
+
+  // Sort the symbol data.
+  std::sort(result.m_Symbols.begin(), result.m_Symbols.end(), [](const SerializedSymbol& l, const SerializedSymbol& r) -> bool
+  {
+    return l.m_Rip < r.m_Rip;
+  });
+
+  qDebug() << "resolve result ready";
+
+  return result;
 }
-#endif
 
 #include "aux_TraceData.moc"
 

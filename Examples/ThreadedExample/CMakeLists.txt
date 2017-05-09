@@ -23,5 +23,17 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_subdirectory(HelloWorld)
-add_subdirectory(ThreadedExample)
+add_executable(ThreadedExample
+  ThreadedExample.cpp)
+
+target_include_directories(ThreadedExample
+  PRIVATE "${CMAKE_SOURCE_DIR}"
+)
+
+if (UNIX)
+  target_compile_options(ThreadedExample PRIVATE "-std=c++11" -g -pthread)
+  target_link_libraries(ThreadedExample LINK_PRIVATE dl pthread)
+  set_target_properties(ThreadedExample PROPERTIES LINK_FLAGS ${LINK_FLAGS} -Wl,--no-as-needed)
+endif (UNIX)
+
+set_target_properties(ThreadedExample PROPERTIES FOLDER "Examples")

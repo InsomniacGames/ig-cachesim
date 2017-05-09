@@ -434,12 +434,8 @@ bool CacheSimStartCapture()
   return true;
 }
 
-__declspec(dllexport)
-void CacheSimEndCapture(bool save)
+void DisableTrapFlag()
 {
-  using namespace CacheSim;
-  g_TraceEnabled = 0;
-
   __writeeflags(__readeflags() & ~0x100);
 
   // Give the thread a few instructions to run so we're definitely not tracing.
@@ -447,21 +443,10 @@ void CacheSimEndCapture(bool save)
   Sleep(0);
   Sleep(0);
   Sleep(0);
+}
 
-  if (!save)
-    return;
-
-  AutoSpinLock lock;
-
-  // It's tempting to remove the handler here, like this:
-  //
-  //    RemoveVectoredExceptionHandler(g_Handler);
-  //    g_Handler = nullptr;
-  //
-  // ..but that's a mistake. There could be a syscall instruction paused in the kernel that
-  // will come back and signal a single step trap at some arbitrary point in the future, so
-  // we need our handler to stay in effect.
-
+void GetFilenameForSave(char* filename, size_t bufferSize)
+{
   char executable_filename[512];
   const char* executable_name = "unknown";
   if (0 != GetModuleFileNameA(NULL, executable_filename, ARRAY_SIZE(executable_filename)))
@@ -477,142 +462,35 @@ void CacheSimEndCapture(bool save)
     }
   }
 
-  char fn[512];
-  _snprintf_s(fn, ARRAY_SIZE(fn), "%s_%u.csim", executable_name, (uint32_t) time(nullptr));
+  _snprintf_s(filename, bufferSize, bufferSize, "%s_%u.csim", executable_name, (uint32_t)time(nullptr));
+}
 
-  if (FILE* f = fopen(fn, "wb"))
+void GetModuleList(ModuleList* moduleList)
+{
+  HMODULE modules[1024];
+  DWORD bytes_needed = 0;
+  if (EnumProcessModules(GetCurrentProcess(), modules, sizeof modules, &bytes_needed))
   {
-    auto align = [&f]()
+     size_t bytes = std::min(sizeof modules, size_t(bytes_needed));
+     size_t nmods = bytes / sizeof modules[0];
+
+    for (size_t i = 0; i < nmods; ++i)
     {
-      if (int needed = (8 - (ftell(f) & 7)) & 7)
+      HMODULE mod = modules[i];
+      MODULEINFO modinfo;
+      if (GetModuleInformation(GetCurrentProcess(), mod, &modinfo, sizeof modinfo))
       {
-        static const uint8_t padding[8] = { 0 };
-        fwrite(padding, 1, needed, f);
-      }
-    };
-
-    auto welem = [&f](const auto& value)
-    {
-      fwrite(&value, 1, sizeof value, f);
-    };
-
-    auto wdata = [&f](const void* data, size_t size)
-    {
-      fwrite(data, 1, size, f);
-    };
-
-    struct PatchWord
-    {
-      long m_Offset;
-      FILE* m_File;
-
-      explicit PatchWord(FILE* f) : m_File(f), m_Offset(ftell(f))
-      {
-        static const uint8_t placeholder[] = { 0xcc, 0xdd, 0xee, 0xff };
-        fwrite(placeholder, 1, sizeof placeholder, f);
-      }
-
-      void Update(uint32_t value)
-      {
-        long pos = ftell(m_File);
-        fseek(m_File, m_Offset, SEEK_SET);
-        fwrite(&value, 1, sizeof value, m_File);
-        fseek(m_File, pos, SEEK_SET);
-      }
-    };
-
-    welem(0xcace'51afu); // magic
-    welem(0x0000'0002u); // version
-
-    PatchWord module_offset { f };
-    PatchWord module_count { f };
-
-    PatchWord module_str_offset { f };
-
-    PatchWord frame_offset { f };
-    PatchWord frame_count { f };
-
-    PatchWord stats_offset { f };
-    PatchWord stats_count { f };
-
-    welem(0u); // symbol_offset
-    welem(0u); // symbol_count
-    welem(0u); // symbol_text_offset
-
-    HMODULE modules[1024];
-    DWORD bytes_needed = 0;
-    if (EnumProcessModules(GetCurrentProcess(), modules, sizeof modules, &bytes_needed))
-    {
-      align();
-
-      size_t bytes = std::min(sizeof modules, size_t(bytes_needed));
-      size_t nmods = bytes / sizeof modules[0];
-      module_offset.Update(ftell(f));
-      module_count.Update(static_cast<uint32_t>(nmods));
-      uint32_t str_section_size = 0;
-      for (size_t i = 0; i < nmods; ++i)
-      {
-        HMODULE mod = modules[i];
-        MODULEINFO modinfo;
-        if (GetModuleInformation(GetCurrentProcess(), mod, &modinfo, sizeof modinfo))
+        if (DWORD namelen = GetModuleFileNameExA(GetCurrentProcess(), mod, moduleList->m_Infos[i].m_Filename, sizeof moduleList->m_Infos[i].m_Filename))
         {
-          char modname[256];
-          if (DWORD namelen = GetModuleFileNameExA(GetCurrentProcess(), mod, modname, sizeof modname))
-          {
-            size_t len = strlen(modname) + 1;
-            welem(reinterpret_cast<uintptr_t>(mod));
-            welem(static_cast<uint64_t>(0u)); // This field is only used on linux
-            welem(static_cast<uint32_t>(modinfo.SizeOfImage));
-            welem(static_cast<uint32_t>(str_section_size));
-            str_section_size += (uint32_t) len;
-          }
-        }
-      }
-
-      module_str_offset.Update(ftell(f));
-
-      for (size_t i = 0; i < nmods; ++i)
-      {
-        char modname[256];
-        HMODULE mod = modules[i];
-        if (DWORD namelen = GetModuleFileNameExA(GetCurrentProcess(), mod, modname, sizeof modname))
-        {
-          wdata(modname, strlen(modname) + 1);
+          moduleList->m_Infos[i].m_StartAddrInMemory = static_cast<void*>(mod);
+          moduleList->m_Infos[i].m_SegmentOffset = 0; // Only used on linux
+          moduleList->m_Infos[i].m_Length = modinfo.SizeOfImage;
+          moduleList->m_Count++;
         }
       }
     }
-
-    align();
-
-    // Write raw values for stack frames
-    frame_offset.Update(ftell(f));
-    frame_count.Update(g_StackData.m_Count);
-    wdata(g_StackData.m_Frames, g_StackData.m_Count * sizeof g_StackData.m_Frames[0]);
-
-    align();
-    // Write stats
-    stats_offset.Update(ftell(f));
-    stats_count.Update((uint32_t) g_Stats.GetCount());
-    for (const RipKey& key : g_Stats.Keys())
-    {
-      welem(key.m_Rip);
-      welem(key.m_StackOffset);
-      welem(*g_Stats.Find(key));
-      welem(static_cast<uint32_t>(0));
-    }
-
-    fclose(f);
-  }
-  else
-  {
-    fprintf(stderr, "failed to open %s for writing", fn);
   }
 
-  g_Stats.FreeAll();
-  g_Stacks.FreeAll();
-
-  VirtualMemoryFree(g_StackData.m_Frames, g_StackData.m_ReserveCount);
-  memset(&g_StackData, 0, sizeof g_StackData);
 }
 
 __declspec(dllexport)

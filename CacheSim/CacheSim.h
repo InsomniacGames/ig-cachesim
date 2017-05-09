@@ -36,7 +36,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #else
 #include <dlfcn.h>
 #include <unistd.h>
+#ifndef IG_CACHESIM_API
 #define IG_CACHESIM_API
+#endif
 #endif
 
 

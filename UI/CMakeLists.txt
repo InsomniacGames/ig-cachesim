@@ -28,6 +28,7 @@ find_package(Qt5 COMPONENTS Widgets REQUIRED)
 set(moc_inputs
   CacheSimMainWindow.h
   CacheSimMainWindow.h
+  SymbolResolver.h
   TraceTab.h
   TraceData.h
   FlatModel.h
@@ -59,9 +60,9 @@ endforeach()
 set(CMAKE_AUTORCC TRUE)
 
 if (WIN32)
-  set(PLATFORM_SRC_FILES TraceDataWindows.cpp)
+  set(PLATFORM_SRC_FILES SymbolResolverWindows.cpp)
 else (WIN32)
- set(PLATFORM_SRC_FILES TraceDataLinux.cpp)
+ set(PLATFORM_SRC_FILES SymbolResolverLinux.cpp)
 endif (WIN32)
 
 add_executable(CacheSimUI WIN32

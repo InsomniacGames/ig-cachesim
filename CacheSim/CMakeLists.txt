@@ -49,17 +49,21 @@ endif (MSVC)
 
 add_library(CacheSim SHARED ${SRC_FILES})
 
-if ( MSVC )
+if (MSVC)
   target_compile_definitions(CacheSim
     INTERFACE   "IG_CACHESIM_API=__declspec(dllimport)"
     PRIVATE     "IG_CACHESIM_API=__declspec(dllexport)" "NOMINMAX" "WIN32_LEAN_AND_MEAN" "_CRT_SECURE_NO_WARNINGS")
   target_compile_options(CacheSim
     PRIVATE "/W4")
-else ( MSVC )
+else (MSVC)
   set(LIB_LIST ${LIB_LIST} dl pthread)
   target_compile_options(CacheSim PRIVATE 
     "-std=c++11" 
-    -g)
+    -g
+    -fvisibility=hidden)
+  target_compile_definitions(CacheSim
+    INTERFACE    ""
+    PRIVATE      "IG_CACHESIM_API=__attribute__ ((visibility (\"default\")))")
   set(CMAKE_SHARED_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS} -Wl,-zdefs)
 endif (MSVC)
 

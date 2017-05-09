@@ -65,12 +65,12 @@ extern "C" void CacheSimRemoveHandler();
 
 static void DebugBreak()
 {
-  if ( g_SignalHandlerInstalled )
+  if (g_SignalHandlerInstalled)
   {
     CacheSimRemoveHandler();
   }
   asm volatile("int $3\n");
-} 
+}
 
 // Must include this AFTER declaring CONTEXT
 #include "CacheSimCommon.inl"
@@ -125,7 +125,7 @@ static void HandleTrap(int signo, siginfo_t* siginfo, void* ucontext_param)
 {
   using namespace CacheSim;
 
-  if ( g_TraceEnabled == false )
+  if (g_TraceEnabled == false)
   {
     // Clear the trap bit
     ((ucontext_t*)ucontext_param)->uc_mcontext.gregs[REG_EFL] &= ~(0x100ull);
@@ -136,7 +136,7 @@ static void HandleTrap(int signo, siginfo_t* siginfo, void* ucontext_param)
   int curr_gen = g_Generation;
   ud_t* ud = &s_ThreadState.m_Disassembler;
 
-  if ( s_ThreadState.m_Generation != curr_gen )
+  if (s_ThreadState.m_Generation != curr_gen)
   {
     ud_init(ud);
     ud_set_mode(ud, 64);
@@ -151,18 +151,18 @@ static void HandleTrap(int signo, siginfo_t* siginfo, void* ucontext_param)
   const int core_index = s_ThreadState.m_LogicalCoreIndex;
 
   // Only trace threads we've mapped to cores. Ignore all others.
-  if ( g_TraceEnabled && core_index >= 0 )
+  if (g_TraceEnabled && core_index >= 0)
   {
     CONTEXT context;
     ConvertToWinStyleContext(&context, &((ucontext_t*)ucontext_param)->uc_mcontext);
 
     uintptr_t rip = context.Rip;
-    if ( ~0u == s_ThreadState.m_StackIndex )
+    if (~0u == s_ThreadState.m_StackIndex)
     {
       // Recompute call stack
       void* callstack[kMaxCalls];
       int frame_count = backtrace(callstack, kMaxCalls);
-      if ( 0 == frame_count || kMaxCalls == frame_count )
+      if (0 == frame_count || kMaxCalls == frame_count)
         DebugBreak();
 
       AutoSpinLock lock;
@@ -177,7 +177,7 @@ static void HandleTrap(int signo, siginfo_t* siginfo, void* ucontext_param)
   }
 }
 
-static char executable_filename[512];
+static char executable_filepath[512];
 
 void CacheSimInit()
 {
@@ -186,14 +186,14 @@ void CacheSimInit()
   g_Stacks.Init();
   memset(&g_StackData, 0, sizeof g_StackData);
 
-  int len = readlink("/proc/self/exe", executable_filename, ARRAY_SIZE(executable_filename));
-  
-  if (len == -1 || len == ARRAY_SIZE(executable_filename))
+  int len = readlink("/proc/self/exe", executable_filepath, ARRAY_SIZE(executable_filepath));
+
+  if (len == -1 || len == ARRAY_SIZE(executable_filepath))
   {
     DebugBreak();
   }
 
-  executable_filename[len] = '\0';
+  executable_filepath[len] = '\0';
 
   // Force backtrace to do its initialization here, outside of the signal handler
   void* callstack[kMaxCalls];
@@ -208,7 +208,7 @@ static void ContinueProcess(const pid_t pid)
 
   do
   {
-    if ( kill(pid, SIGCONT) == -1 )
+    if (kill(pid, SIGCONT) == -1)
     {
       DebugBreak();
     }
@@ -217,14 +217,14 @@ static void ContinueProcess(const pid_t pid)
     {
       status = 0;
       p = waitpid(pid, &status, WUNTRACED | WCONTINUED);
-    } while ( p == (pid_t)-1 && errno == EINTR );
+    } while (p == (pid_t)-1 && errno == EINTR);
 
-    if ( p != pid )
+    if (p != pid)
     {
       DebugBreak();
     }
 
-  } while ( WIFSTOPPED(status) );
+  } while (WIFSTOPPED(status));
 
   return;
 }
@@ -232,7 +232,7 @@ static void ContinueProcess(const pid_t pid)
 bool CacheSimStartCapture()
 {
   using namespace CacheSim;
-  if ( g_TraceEnabled )
+  if (g_TraceEnabled)
   {
     return false;
   }
@@ -241,22 +241,22 @@ bool CacheSimStartCapture()
   g_Cache.Init();
 
   pid_t child = fork();
-  if ( child != 0 )
+  if (child != 0)
   {
     // Parent process
     __sync_fetch_and_add(&g_Generation, 1);
 
     g_TraceEnabled = 1;
 
-    if ( g_SignalHandlerInstalled == false )
+    if (g_SignalHandlerInstalled == false)
     {
       struct sigaction action;
       action.sa_sigaction = HandleTrap;
       sigemptyset(&action.sa_mask);
       action.sa_flags = SA_SIGINFO;
       int ok = sigaction(SIGTRAP, &action, &g_OldSigAction);
-  
-      if ( ok != 0 )
+
+      if (ok != 0)
       {
         DebugBreak(); // Failed to install signal handler
       }
@@ -281,7 +281,7 @@ bool CacheSimStartCapture()
     pid_t tids[ARRAY_SIZE(s_CoreMappings)];
     int thread_count = 0;
 
-    for ( int i = 0, count = s_CoreMappingCount; i < count; ++i )
+    for (int i = 0, count = s_CoreMappingCount; i < count; ++i)
     {
       const auto& mapping = s_CoreMappings[i];
 
@@ -289,13 +289,13 @@ bool CacheSimStartCapture()
       do
       {
         ok = ptrace(PTRACE_ATTACH, mapping.m_ThreadId, nullptr, nullptr);
-        if ( errno == ESRCH )
+        if (errno == ESRCH)
         {
           fprintf(stderr, "Thread %ld no longer exists.\n", mapping.m_ThreadId);
         }
-      } while ( ok == -1 && (errno == EFAULT || errno == ESRCH) );
+      } while (ok == -1 && (errno == EFAULT || errno == ESRCH));
 
-      if ( ok != -1 )
+      if (ok != -1)
       {
         tids[thread_count++] = mapping.m_ThreadId;
         // Wait for the attachment to thread to stop
@@ -308,24 +308,24 @@ bool CacheSimStartCapture()
       }
     }
 
-    for ( int i = 0; i < thread_count; i++ )
+    for (int i = 0; i < thread_count; i++)
     {
       struct user_regs_struct regs;
       int ok = ptrace(PTRACE_GETREGS, tids[i], nullptr, &regs);
-      if ( ok != 0 ) DebugBreak();
+      if (ok != 0) DebugBreak();
       regs.eflags |= 0x100;
       ok = ptrace(PTRACE_SETREGS, tids[i], nullptr, &regs);
-      if ( ok != 0 ) DebugBreak();
+      if (ok != 0) DebugBreak();
     }
 
     // Detach all threads
-    for ( int i = 0; i < thread_count; ++i )
+    for (int i = 0; i < thread_count; ++i)
     {
       int ok = -1;
       do
       {
         ok = ptrace(PTRACE_DETACH, tids[i], nullptr, nullptr);
-      } while ( ok == -1 && (errno == EBUSY || errno == EFAULT || errno == ESRCH) );
+      } while (ok == -1 && (errno == EBUSY || errno == EFAULT || errno == ESRCH));
     }
     ContinueProcess(getppid());
     exit(0);
@@ -334,58 +334,43 @@ bool CacheSimStartCapture()
   return true;
 }
 
-struct ModuleInfo
-{
-  const char* m_Filename;
-  void* m_StartAddrInMemory;
-  void* m_SegmentOffset;
-  size_t m_Length;
-};
-
-struct ModuleList
-{
-  ModuleInfo m_Infos[1024];
-  int m_Count = 0;
-  int m_ModuleCallbacks = 0;
-};
-
 static int RecordModule(struct dl_phdr_info* info, size_t size, void* data)
 {
   ModuleList* modules = reinterpret_cast<ModuleList*>(data);
   modules->m_ModuleCallbacks++;
-  if ( modules->m_Count == ARRAY_SIZE(modules->m_Infos) )
+  if (modules->m_Count == ARRAY_SIZE(modules->m_Infos))
   {
     fprintf(stderr, "Cannot record additional modules. Increase the ModuleList::m_Infos buffer size.\n");
     return -1;
   }
 
-  for ( ElfW(Half) i = 0; i < info->dlpi_phnum; i++ )
+  for (ElfW(Half) i = 0; i < info->dlpi_phnum; i++)
   {
     const ElfW(Phdr)& header = info->dlpi_phdr[i];
 
     // Find the executable segment
-    if ( (header.p_flags & PF_X) && (header.p_type == PT_LOAD) )
+    if ((header.p_flags & PF_X) && (header.p_type == PT_LOAD))
     {
       ModuleInfo& module = modules->m_Infos[modules->m_Count];
-      if ( info->dlpi_addr == getauxval(AT_SYSINFO_EHDR) )
+      if (info->dlpi_addr == getauxval(AT_SYSINFO_EHDR))
       {
         // vdso section.
         continue;
       }
-      
+
       module.m_StartAddrInMemory = (void*)info->dlpi_addr;
       module.m_SegmentOffset = (void*)header.p_vaddr;
       module.m_Length = header.p_memsz;
 
       bool hasName = (info->dlpi_name != nullptr) && (info->dlpi_name[0] != '\0');
-      if ( !hasName && (modules->m_ModuleCallbacks == 1) ) 
+      if (!hasName && (modules->m_ModuleCallbacks == 1))
       {
         // This is the main executable.
-        module.m_Filename = executable_filename;
+        strcpy(module.m_Filename, executable_filepath);
       }
       else if (hasName)
       {
-        module.m_Filename = info->dlpi_name; // dlpi_name will continue to exist--at least on this implementation of linux :)
+        strcpy(module.m_Filename, info->dlpi_name);       
       }
       else
       {
@@ -400,172 +385,40 @@ static int RecordModule(struct dl_phdr_info* info, size_t size, void* data)
   return 0;
 }
 
-namespace
+void DisableTrapFlag()
 {
-  template<typename T> void WriteHelper(FILE* f, const T& val)
-  {
-    fwrite(&val, 1, sizeof val, f);
-  }
-}
-
-void CacheSimEndCapture(bool save)
-{
-  using namespace CacheSim;
-  g_TraceEnabled = 0;
-
   // Clear our trap flag
   asm volatile("pushf\n"
-    "andl $0xFFFFFFFFFFFFFEFF, (%rsp)\n"
-    "popf\n");
+               "andl $0xFFFFFFFFFFFFFEFF, (%rsp)\n"
+               "popf\n");
 
 
   // Give the thread a few instructions to run so we're definitely not tracing.
-  //Thread::NanoPause();
   usleep(0);
   usleep(0);
   usleep(0);
+}
 
-  if ( !save )
-    return;
-
-  AutoSpinLock lock;
-
-  // It's tempting to remove the signal handler here
-  //
-  //    RemoveVectoredExceptionHandler(g_Handler);
-  //    g_Handler = nullptr;
-  //
-  // ..but that's a mistake. There could be a syscall instruction paused in the kernel that
-  // will come back and signal a single step trap at some arbitrary point in the future, so
-  // we need our handler to stay in effect.
-
+void GetFilenameForSave(char* filename, size_t bufferSize)
+{
   const char* executable_name = "unknown";
-  if ( char* p = strrchr(executable_filename, '/') )
+  if (char* p = strrchr(executable_filepath, '/'))
   {
     ++p;
     executable_name = p;
   }
 
-  char fn[512];
-  snprintf(fn, ARRAY_SIZE(fn), "%s_%u.csim", executable_name, (uint32_t)time(nullptr));
-
-  if ( FILE* f = fopen(fn, "w") )
+  if (bufferSize < ARRAY_SIZE(executable_filepath))
   {
-    auto align = [&f]()
-    {
-      if ( int needed = (8 - (ftell(f) & 7)) & 7 )
-      {
-        static const uint8_t padding[8] = { 0 };
-        fwrite(padding, 1, needed, f);
-      }
-    };
-
-#define welem(value) WriteHelper(f, value)
-
-#define wdata(data, size) fwrite(data, 1, size, f);
-
-    struct PatchWord
-    {
-      long m_Offset;
-      FILE* m_File;
-
-      explicit PatchWord(FILE* f) : m_File(f), m_Offset(ftell(f))
-      {
-        static const uint8_t placeholder[] = { 0xcc, 0xdd, 0xee, 0xff };
-        fwrite(placeholder, 1, sizeof placeholder, f);
-      }
-
-      void Update(uint32_t value)
-      {
-        long pos = ftell(m_File);
-        fseek(m_File, m_Offset, SEEK_SET);
-        if ( ftell(m_File) != m_Offset )
-        {
-          DebugBreak();
-        }
-        fwrite(&value, 1, sizeof value, m_File);
-        fseek(m_File, pos, SEEK_SET);
-      }
-    };
-
-    welem(0xcace51afu);
-    welem(0x00000002u);
-
-    PatchWord module_offset{ f };
-    PatchWord module_count{ f };
-
-    PatchWord module_str_offset{ f };
-
-    PatchWord frame_offset{ f };
-    PatchWord frame_count{ f };
-
-    PatchWord stats_offset{ f };
-    PatchWord stats_count{ f };
-
-    welem(0u); // symbol_offset
-    welem(0u); // symbol_count
-    welem(0u); // symbol_text_offset
-
-    // Special handling for the main executable.
-    ModuleList modules;
-    int ok = dl_iterate_phdr(RecordModule, &modules);
-
-    if ( modules.m_Count > 0 )
-    {
-      align();
-
-      module_offset.Update(ftell(f));
-      module_count.Update(static_cast<uint32_t>(modules.m_Count));
-      uint32_t str_section_size = 0;
-
-      for ( size_t i = 0; i < modules.m_Count; ++i )
-      {
-        ModuleInfo& info = modules.m_Infos[i];
-        size_t len = strlen(info.m_Filename) + 1;
-        welem(reinterpret_cast<uintptr_t>(info.m_StartAddrInMemory));
-        welem(reinterpret_cast<uintptr_t>(info.m_SegmentOffset));
-        welem(static_cast<uint32_t>(info.m_Length));
-        welem(static_cast<uint32_t>(str_section_size));
-        str_section_size += (uint32_t)len;
-      }
-
-      module_str_offset.Update(ftell(f));
-      for ( size_t i = 0; i < modules.m_Count; ++i )
-      {
-        wdata(modules.m_Infos[i].m_Filename, strlen(modules.m_Infos[i].m_Filename) + 1);
-      }
-    }
-    align();
-
-    // Write raw values for stack frames
-    frame_offset.Update(ftell(f));
-    frame_count.Update(g_StackData.m_Count);
-    wdata(g_StackData.m_Frames, g_StackData.m_Count * sizeof g_StackData.m_Frames[0]);
-
-    align();
-    // Write stats
-    stats_offset.Update(ftell(f));
-    stats_count.Update((uint32_t)g_Stats.GetCount());
-    for ( const RipKey& key : g_Stats.Keys() )
-    {
-      welem(key.m_Rip);
-      welem(key.m_StackOffset);
-      welem(*g_Stats.Find(key));
-      welem(static_cast<uint32_t>(0));
-    }
-
-    fclose(f);
-  }
-  else
-  {
-    fprintf(stderr, "Failed to open %s for writing", fn);
+    DebugBreak();
   }
 
-  g_Stats.FreeAll();
-  g_Stacks.FreeAll();
+  snprintf(filename, bufferSize, "%s_%u.csim", executable_name, (uint32_t)time(nullptr));
+}
 
-  VirtualMemoryFree(g_StackData.m_Frames, g_StackData.m_ReserveCount);
-  memset(&g_StackData, 0, sizeof g_StackData);
+void GetModuleList(ModuleList* moduleList)
+{
+  dl_iterate_phdr(RecordModule, moduleList);
 }
 
 void CacheSimRemoveHandler()

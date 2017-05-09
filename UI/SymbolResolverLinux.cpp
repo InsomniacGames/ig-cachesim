@@ -1,5 +1,5 @@
 #include "Precompiled.h"
-#include "TraceData.h"
+#include "SymbolResolver.h"
 #include "CacheSim/CacheSimData.h"
 #include <sstream>
 #include <unistd.h>
@@ -62,19 +62,8 @@ static bool ResolveSymbolViaObjdump(char** symbolNameOut, size_t* bufferSizeOut,
 }
 
 #define DebugBreak() asm volatile("int $3")
-CacheSim::TraceData::ResolveResult CacheSim::TraceData::symbolResolveTask()
+bool CacheSim::ResolveSymbols(const UnresolvedAddressData& input, QVector<ResolvedSymbol>* resolvedSymbolsOut, SymbolResolveProgressCallbackType reportProgress)
 {
-  
-  // Pick out input data.
-  const SerializedHeader* hdr = reinterpret_cast<const SerializedHeader*>(m_Data);
-
-  const SerializedModuleEntry* modules = hdr->GetModules();
-  const uint32_t moduleCount = hdr->GetModuleCount();
-  const uintptr_t* stacks  = hdr->GetStacks();
-  const uint32_t stackCount = hdr->GetStackCount();
-  const SerializedNode* nodes   = hdr->GetStats();
-  const uint32_t nodeCount = hdr->GetStatCount();
-
   struct ModuleFrames
   {
       const SerializedModuleEntry* m_Entry;
@@ -82,10 +71,10 @@ CacheSim::TraceData::ResolveResult CacheSim::TraceData::symbolResolveTask()
   };
 
   QVector<ModuleFrames> moduleFrameList;
-  for ( int i = 0; i < moduleCount; i++ )
+  for ( int i = 0; i < input.m_ModuleCount; i++ )
   {
       ModuleFrames frames;
-      frames.m_Entry = &modules[i];
+      frames.m_Entry = &input.m_Modules[i];
       moduleFrameList.push_back(frames);
   }
 
@@ -107,7 +96,7 @@ CacheSim::TraceData::ResolveResult CacheSim::TraceData::symbolResolveTask()
     }
     ripLookup.insert(rip);
 
-    for ( int i = 0; i < moduleCount; i++ )
+    for ( int i = 0; i < input.m_ModuleCount; i++ )
     {
       ModuleFrames& module = moduleFrameList[i];
       if ( rip >= module.m_Entry->m_ImageBase + module.m_Entry->m_ImageSegmentOffset)
@@ -129,63 +118,35 @@ CacheSim::TraceData::ResolveResult CacheSim::TraceData::symbolResolveTask()
   };
 
   
-  int total = 2 * (stackCount + nodeCount); // Two passes, once to sort the data and once to process it
+  int total = 2 * (input.m_StackCount + input.m_NodeCount); // Two passes, once to sort the data and once to process it
   int completed = 0;
 
   // Sort instructions in stacks
-  for (uint32_t i = 0; i < stackCount; ++i, ++completed)
+  for (uint32_t i = 0; i < input.m_StackCount; ++i, ++completed)
   {
-    if (uintptr_t rip = stacks[i])
+    if (uintptr_t rip = input.m_Stacks[i])
     {
       addRipToModuleFrames(rip);
     }
 
     if (0 == (completed & 0x400))
     {
-      Q_EMIT symbolResolutionProgressed(completed, total);
+      reportProgress(completed, total);
     }
   }
 
   // Sort any instructions used in leaf functions.
-  for (uint32_t i = 0; i < nodeCount; ++i, ++completed)
+  for (uint32_t i = 0; i < input.m_NodeCount; ++i, ++completed)
   {
-    addRipToModuleFrames(nodes[i].m_Rip);
+    addRipToModuleFrames(input.m_Nodes[i].m_Rip);
 
     if (0 == (completed & 0x400))
     {
-      Q_EMIT symbolResolutionProgressed(completed, total);
+      reportProgress(completed, total);
     }
   }
 
-  Q_EMIT symbolResolutionProgressed(completed, total);
-
-  QVector<SerializedSymbol> symbols;
-
-  QVector<QChar> stringData;
-  stringData.push_back(QChar(0));    // Zero offset strings point here.
-
-  QHash<QString, uint32_t> stringLookup;
-
-  auto intern_qstring = [&](const QString& s) -> uint32_t
-  {
-    auto it = stringLookup.find(s);
-    if (it != stringLookup.end())
-    {
-      return it.value();
-    }
-    uint32_t result = stringData.size();
-    Q_FOREACH (QChar ch, s)
-    {
-      stringData.append(ch);
-    }
-    stringData.append(QChar(0));
-    return result;
-  };
-
-  auto intern_string = [&](const char* str) -> uint32_t
-  {
-    return intern_qstring(QString::fromUtf8(str));
-  };
+  reportProgress(completed, total);
 
   for ( int i = 0; i < moduleFrameList.count(); i++ )
   {
@@ -194,19 +155,16 @@ CacheSim::TraceData::ResolveResult CacheSim::TraceData::symbolResolveTask()
         continue;
     }
 
+    ptrdiff_t moduleIndex = moduleFrameList[i].m_Entry - input.m_Modules;
+
     // Figure out the actual file with the debug info. If there's anything in /usr/lib/debug, use that version instead
-    const char* baseFilename = hdr->GetModuleName(*moduleFrameList[i].m_Entry);
     // resolve any symlinks
     char resolvedBaseFilename[1024];
-    if ( realpath(baseFilename, resolvedBaseFilename) == nullptr )
+    if ( realpath(input.m_ModuleNames[moduleIndex].toLatin1().data(), resolvedBaseFilename) == nullptr )
     {
-      strcpy(resolvedBaseFilename, baseFilename);
+      strcpy(resolvedBaseFilename, input.m_ModuleNames[moduleIndex].toLatin1().data());
     }
-    if (strlen(baseFilename)  == 0)
-    { 
-      printf("Pausing\n");
-      getchar();
-    }
+
     const char* debugLibBase = "/usr/lib/debug";
     std::stringstream symbolFilename;
     symbolFilename << debugLibBase;
@@ -214,7 +172,7 @@ CacheSim::TraceData::ResolveResult CacheSim::TraceData::symbolResolveTask()
     if ( access(symbolFilename.str().c_str(), R_OK) == -1 )
     {
       // Didn't find a special symbol library, so use the code library
-      symbolFilename.str(baseFilename);
+      symbolFilename.str(input.m_ModuleNames[moduleIndex].toLatin1().data());
     }
     
     int frameIndex = 0;
@@ -238,8 +196,7 @@ CacheSim::TraceData::ResolveResult CacheSim::TraceData::symbolResolveTask()
       {
         qDebug() << "Cannot resolve symbols. addr2line not found.";
         pclose(fd);
-        ResolveResult r;
-        return r;
+        return false;
       }
 
       char* symbolBuffer = nullptr;
@@ -249,9 +206,9 @@ CacheSim::TraceData::ResolveResult CacheSim::TraceData::symbolResolveTask()
         if ( strcmp(symbolBuffer, "??\n") == 0 )
         {
           // Attempt to use objdump to get the data
-          if ( !ResolveSymbolViaObjdump(&symbolBuffer, &symbolBufferSize, hdr->GetModuleName(*moduleFrameList[i].m_Entry), moduleFrameList[i].m_Frames[frameIndex] - moduleFrameList[i].m_Entry->m_ImageBase))
+          if ( !ResolveSymbolViaObjdump(&symbolBuffer, &symbolBufferSize, input.m_ModuleNames[moduleIndex].toLatin1().data(), moduleFrameList[i].m_Frames[frameIndex] - moduleFrameList[i].m_Entry->m_ImageBase))
           {
-            int needed = snprintf(symbolBuffer, symbolBufferSize, "[%016lx in %s]", moduleFrameList[i].m_Frames[frameIndex], symbolFilename.str().c_str());
+            int needed = snprintf(symbolBuffer, symbolBufferSize, "[0x%016lx in %s]", moduleFrameList[i].m_Frames[frameIndex], symbolFilename.str().c_str());
             if ( needed >= symbolBufferSize )
             {
               symbolBufferSize = needed + 1;
@@ -272,29 +229,29 @@ CacheSim::TraceData::ResolveResult CacheSim::TraceData::symbolResolveTask()
         if ( elementsFilled == 0 )
         {
           qDebug() << "Unexpected response from addr2line. Aborting.";
-          ResolveResult r;
           pclose(fd);
-          return r;
+          return false;
         }
         else if ( elementsFilled == 1 )
         {
           lineNumber = -1;
         }
   
-        SerializedSymbol out_sym = { moduleFrameList[i].m_Frames[frameIndex] };
-        out_sym.m_SymbolName = intern_string(symbolBuffer);
-        out_sym.m_FileName = intern_string(filename);
+        ResolvedSymbol out_sym;
+        out_sym.m_Rip = moduleFrameList[i].m_Frames[frameIndex];
+        out_sym.m_SymbolName = symbolBuffer;
+        out_sym.m_FileName = filename;
         out_sym.m_LineNumber = lineNumber;
         out_sym.m_ModuleIndex = i;
         out_sym.m_Displacement = -1;
-        symbols.push_back(out_sym);
+        resolvedSymbolsOut->push_back(out_sym);
         ++frameIndex;
         ++resolve_count;
         ++completed;
         free(filename);
         if (0 == (completed & 0x400))
         {
-          Q_EMIT symbolResolutionProgressed(completed, total);
+          reportProgress(completed, total);
         }
       }
       free(symbolBuffer);    
@@ -302,15 +259,5 @@ CacheSim::TraceData::ResolveResult CacheSim::TraceData::symbolResolveTask()
     } while ( frameIndex < moduleFrameList[i].m_Frames.count() );
   }
 
-  std::sort(symbols.begin(), symbols.end(), [](const SerializedSymbol& l, const SerializedSymbol& r) -> bool
-  {
-    return l.m_Rip < r.m_Rip;
-  });
-
-  Q_EMIT symbolResolutionProgressed(completed, total);
-
-  ResolveResult result;
-  result.m_StringData = stringData;
-  result.m_Symbols = symbols;
-  return result;
+  return true;
 }
