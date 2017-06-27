@@ -83,7 +83,8 @@ int main(int argc, char* argv[])
     int count = 0;
     while (run) {
       std::string s;
-      s.append("Hi!\n", count++);
+      s.append("Hi!\n");
+      count++;
       printf("%s %d\n", s.c_str(), count);
     }
     while (canExit == false) { std::this_thread::yield(); }
