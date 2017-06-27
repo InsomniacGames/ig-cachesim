@@ -26,6 +26,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "Precompiled.h"
 
+#include <sched.h>
+#include <error.h>
+#include <errno.h>
+#include <time.h>
 #include <asm/prctl.h>
 #include <execinfo.h>
 #include <link.h>
