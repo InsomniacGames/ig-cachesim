@@ -25,6 +25,8 @@
 
 find_package(Qt5 COMPONENTS Widgets REQUIRED)
 
+set(CMAKE_CXX_STANDARD 14)
+
 set(moc_inputs
   CacheSimMainWindow.h
   CacheSimMainWindow.h
