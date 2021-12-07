@@ -159,7 +159,7 @@ bool CacheSim::ResolveSymbols(const UnresolvedAddressData& input, QVector<Resolv
 
     // Figure out the actual file with the debug info. If there's anything in /usr/lib/debug, use that version instead
     // resolve any symlinks
-    char resolvedBaseFilename[1024];
+    char resolvedBaseFilename[PATH_MAX];
     if ( realpath(input.m_ModuleNames[moduleIndex].toLatin1().data(), resolvedBaseFilename) == nullptr )
     {
       strcpy(resolvedBaseFilename, input.m_ModuleNames[moduleIndex].toLatin1().data());
